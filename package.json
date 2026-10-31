@@ -1,0 +1,11 @@
+{
+  "name": "lidar-clearance-agent-ui",
+  "private": true,
+  "description": "Front-end assets for the Line Clearance Agent app (no build step: the files are copied into lidar_agent/vendor)",
+  "scripts": {
+    "postinstall": "node scripts/vendor-orbs.mjs"
+  },
+  "dependencies": {
+    "thinking-orbs": "0.3.2"
+  }
+}

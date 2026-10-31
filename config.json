@@ -1,0 +1,32 @@
+{
+  "_comment": "Shared settings (committed). Machine-specific settings - e.g. the PotreeConverter path - go in config.local.json next to this file (not committed); it overrides anything here. Minimum clearances in metres, per measurement key: null = not checked. Fill in from the PGCIL / CEA spec you work to.",
+  "min_clearance_m": {
+    "phase_LM": null,
+    "phase_RM": null,
+    "opgw_R": null,
+    "opgw_L": null,
+    "s_L_leg": null,
+    "s_R_leg": null,
+    "s_M_top": null,
+    "s_M_bot": null,
+    "s_M_left": null,
+    "s_M_right": null,
+    "t_L_arm": null,
+    "t_R_arm": null,
+    "t_M_upper": null,
+    "t_M_lower": null,
+    "t_L_horn": null,
+    "t_M_horn": null,
+    "t_R_horn": null,
+    "t_L_leg": null,
+    "t_R_leg": null,
+    "t_M_left": null,
+    "t_M_right": null,
+    "gnd_L": null,
+    "gnd_R": null
+  },
+  "detect": {
+    "opgw": "left"
+  },
+  "potree_converter": ""
+}

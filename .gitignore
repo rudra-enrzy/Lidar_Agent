@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Node (the thinking-orbs engine is copied into lidar_agent/vendor by `npm install`)
+node_modules/
+
+# This machine's settings (PotreeConverter path, ...)
+config.local.json
+
+# Survey data and outputs - never commit client data
+*.las
+*.laz
+*.copc.laz
+*_MARKED.laz
+* reports/
+*_Sag and Vegetation Clearance Report*.xlsx
+*_potree_markers.json
+*_debug.json
+*_screenshots.zip
+
+# Potree: clouds converted at run time, markers copied for the static viewer, temp bbox fixes
+potree_viewer/pointclouds/*
+!potree_viewer/pointclouds/.gitkeep
+potree_viewer/data/*
+!potree_viewer/data/.gitkeep
+potree_viewer/_tmp_bbox_fix/
+
+# Local tools and screenshots
+tools/
+ss/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# files dropped onto the page are copied here
+data/uploads/
+
+# Cesium bundle: not used by the app, and its demo Mapbox token trips GitHub push protection
+potree_viewer/libs/Cesium/

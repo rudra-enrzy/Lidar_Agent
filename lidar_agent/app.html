@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Line Clearance Agent</title>
+<link rel="icon" type="image/png" href="/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+/* night-survey palette: deep slate-teal panels beside the dark point cloud; amber only when the engineer
+   has to act; the four phase colours stay reserved for phases (same as in the viewer) */
+:root{
+  --ink-0:#0d181d; --ink-1:#13232a; --ink-2:#1b2f37; --ink-3:#24404a; --rule:#2d4954;
+  --text:#e4edef; --text-2:#9bb1b8; --text-3:#6f8a93;
+  --amber:#f2b33d; --amber-hi:#f6c45f; --amber-ink:#2a1f08; --amber-wash:#2c2614;
+  --ok:#6fd39b; --err:#ff8070; --link:#8fd3ff;
+  --f-ui:"Bahnschrift","Barlow","Segoe UI",system-ui,sans-serif;
+  --f-cond:"Bahnschrift SemiCondensed","Barlow Semi Condensed","Bahnschrift","Segoe UI",sans-serif;
+  --f-mono:"Cascadia Mono",Consolas,"SFMono-Regular",monospace;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px;
+  --r-field:4px; --r-card:6px;
+  --side:392px; --strip:148px;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--ink-0);color:var(--text);font:400 14px/1.45 var(--f-ui);
+  display:grid;grid-template-columns:var(--side) 1fr;overflow:hidden}
+:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+button,input,select{font:inherit;color:inherit}
+a{color:var(--link)}
+
+#side{background:var(--ink-1);border-right:1px solid var(--rule);display:flex;flex-direction:column;min-height:0}
+.brand{display:flex;align-items:center;gap:var(--s2)}.brand img{display:block;flex:none;height:32px;width:auto}
+#side header{padding:var(--s4) var(--s4) var(--s3);border-bottom:1px solid var(--rule)}
+h1{font:600 20px/1.15 var(--f-cond);letter-spacing:.01em;margin:0}
+.lede{color:var(--text-2);font-size:13px;margin:var(--s1) 0 0;max-width:46ch}
+#scroll{flex:1;overflow:auto;padding:var(--s3) var(--s4) var(--s5)}
+
+fieldset{border:0;margin:0 0 var(--s4);padding:0}
+legend{font:600 15px/1.2 var(--f-cond);color:var(--text);padding:0;margin:0 0 var(--s2)}
+.f{margin-bottom:var(--s3)}
+.f label{display:block;font:500 13px/1.3 var(--f-cond);color:var(--text-2);margin-bottom:var(--s1)}
+.hint{color:var(--text-3);font-size:12px;margin-top:var(--s1)}
+input:not([type=checkbox]),select{width:100%;height:34px;padding:0 var(--s2);
+  background:var(--ink-0);border:1px solid var(--rule);border-radius:var(--r-field)}
+input::placeholder{color:var(--text-3)}
+input:hover,select:hover{border-color:var(--ink-3)}
+input[aria-invalid=true]{border-color:var(--err)}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:var(--s2)}
+.file{display:grid;grid-template-columns:1fr auto;gap:var(--s2)}
+#drop{border:1.5px dashed var(--rule);border-radius:var(--r-card);padding:var(--s3);text-align:center;color:var(--text-2);
+  font-size:13px;background:var(--ink-0);transition:border-color .12s,background .12s}
+#drop strong{color:var(--text);font-weight:600}
+#drop.over{border-color:var(--amber);background:var(--amber-wash);color:var(--text)}
+#flist{list-style:none;margin:var(--s2) 0 0;padding:0}
+#flist li{display:grid;grid-template-columns:22px 1fr auto 26px;gap:var(--s2);align-items:center;padding:5px var(--s2);
+  background:var(--ink-2);border-radius:var(--r-field);margin-bottom:4px;font-size:13px}
+#flist .n{color:var(--text-3);font:600 12px var(--f-cond)}
+#flist .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#flist .st{color:var(--text-3);font-size:12px;font-variant-numeric:tabular-nums}
+#flist .st.err{color:var(--err)}
+#flist button{background:none;border:0;color:var(--text-3);font-size:16px;line-height:1;cursor:pointer;border-radius:4px;height:22px}
+#flist button:hover{color:var(--text);background:var(--ink-3)}
+#flist .bar{grid-column:2/-1;height:3px;background:var(--ink-3);border-radius:2px;overflow:hidden}
+#flist .bar i{display:block;height:100%;background:var(--amber);width:0}
+.check{display:grid;grid-template-columns:18px 1fr;gap:var(--s2);align-items:start;margin:var(--s2) 0;cursor:pointer}
+.check input{width:16px;height:16px;margin:2px 0 0;accent-color:var(--amber)}
+.check span{font-size:13px}.check small{display:block;color:var(--text-3);font-size:12px}
+
+details.more{border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);margin:var(--s2) 0 var(--s4)}
+details.more summary{cursor:pointer;padding:var(--s2) 0;font:600 15px/1.2 var(--f-cond);list-style:none;display:flex;justify-content:space-between}
+details.more summary::-webkit-details-marker{display:none}
+details.more summary::after{content:"+";color:var(--text-2);font-size:18px;line-height:1}
+details.more[open] summary::after{content:"\2212"}
+details.more .inner{padding:var(--s1) 0 var(--s3)}
+
+.btn{height:34px;padding:0 var(--s3);border-radius:var(--r-field);border:1px solid var(--rule);background:var(--ink-2);cursor:pointer;white-space:nowrap}
+.btn:hover{background:var(--ink-3)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn-primary{width:100%;height:44px;border-radius:var(--r-field);background:var(--amber);color:var(--amber-ink);border:1px solid var(--amber);
+  font:600 16px/1 var(--f-cond);letter-spacing:.01em;cursor:pointer}
+.btn-primary:hover{background:var(--amber-hi)}
+.btn-primary:disabled{opacity:.5;cursor:progress}
+.err{color:var(--err);font-size:13px;margin-top:var(--s2)}
+.err:empty{display:none}
+
+#summary{display:none;background:var(--ink-2);border-radius:var(--r-card);padding:var(--s3);margin-bottom:var(--s4)}
+#summary .name{font:600 15px/1.25 var(--f-cond);word-break:break-all}
+#summary .meta{color:var(--text-2);font-size:12px;margin-top:2px}
+#summary .row{display:flex;justify-content:space-between;gap:var(--s2);align-items:start}
+body.running #setup{display:none} body.running #summary{display:block}
+#run{display:none} body.running #run,body.ran #run{display:block}
+
+ol.stages{list-style:none;margin:0 0 var(--s4);padding:0;counter-reset:st}
+ol.stages li{counter-increment:st;display:grid;grid-template-columns:24px 1fr;gap:var(--s2);align-items:center;padding:6px 0;color:var(--text-3)}
+ol.stages li::before{content:counter(st);width:22px;height:22px;border-radius:50%;border:1px solid var(--rule);
+  display:grid;place-items:center;font:600 12px/1 var(--f-cond)}
+ol.stages li.on{color:var(--text)} ol.stages li.on::before{border-color:var(--amber);color:var(--amber)}
+ol.stages li.done{color:var(--text-2)} ol.stages li.done::before{content:"\2713";background:var(--ok);border-color:var(--ok);color:var(--ink-0)}
+ol.stages li.skip{color:var(--text-2)} ol.stages li.skip::before{content:"\2013";border-color:var(--text-3);color:var(--text-2)}
+ol.stages li.bad{color:var(--err)} ol.stages li.bad::before{content:"!";border-color:var(--err);color:var(--err)}
+ol.stages li{position:relative}
+ol.stages .orb{position:absolute;left:1px;top:7px;display:none}
+ol.stages li.on.orbing::before{opacity:0} ol.stages li.on.orbing .orb{display:block}
+#emptyOrb{display:none;margin-bottom:var(--s4)} #empty.busy #emptyOrb{display:block}
+ol.stages .now{grid-column:2;font-size:12px;color:var(--text-2);margin-top:-4px} ol.stages .now:empty{display:none}
+
+#ask{display:none;background:var(--amber-wash);border:1px solid var(--amber);border-radius:var(--r-card);padding:var(--s3);margin-bottom:var(--s4)}
+#ask h2{font:600 16px/1.25 var(--f-cond);color:var(--amber);margin:0 0 var(--s1)}
+#ask p{margin:0 0 var(--s3);color:var(--text-2);font-size:13px}
+#ask .btn-primary{height:38px;font-size:15px;margin-top:var(--s1)}
+
+h2.sec{font:600 15px/1.2 var(--f-cond);margin:0 0 var(--s2)}
+#exp{border:1px solid var(--rule);border-radius:var(--r-card);padding:var(--s3);margin-bottom:var(--s4);background:var(--ink-2)}
+#exp h2{font:600 16px/1.25 var(--f-cond);margin:0 0 var(--s1)}
+#exp p{margin:0 0 var(--s3);font-size:13px;color:var(--text-2)}
+#exp .undo{display:flex;gap:var(--s2);align-items:center;margin-bottom:var(--s3)}
+#exp .keys{color:var(--text-3);font-size:12px}
+#exp .ed{color:var(--amber)} #exp .ed:empty{display:none}
+#exp .hint:empty{display:none}
+#exp.hide{display:none}
+#flags{margin:0 0 var(--s4);padding:0;list-style:none}
+#flags li{font-size:12px;color:var(--text-2);padding:var(--s1) 0 var(--s1) var(--s3);border-left:2px solid var(--amber);margin-bottom:var(--s1)}
+#reports{list-style:none;margin:0 0 var(--s3);padding:0}
+#reports li{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s2);padding:var(--s2) 0;border-bottom:1px solid var(--rule)}
+#reports .sp{font:600 14px/1.2 var(--f-cond)}
+#reports a{font-size:13px}
+.hide{display:none}
+
+details.log summary{cursor:pointer;color:var(--text-2);font:500 13px/1 var(--f-cond);padding:var(--s2) 0}
+#log{background:var(--ink-0);border:1px solid var(--rule);border-radius:var(--r-field);padding:var(--s2);height:220px;overflow:auto;
+  font:11.5px/1.5 var(--f-mono);white-space:pre-wrap;color:var(--text-2);margin:0}
+
+#main{display:grid;grid-template-rows:1fr var(--strip);min-width:0;min-height:0}
+#stage{position:relative;min-height:0;background:#000}
+#view{width:100%;height:100%;border:0;display:block}
+#empty{position:absolute;inset:0;display:grid;place-items:center;padding:var(--s6);background:var(--ink-0)}
+#empty div{max-width:44ch}
+#empty h2{font:600 22px/1.2 var(--f-cond);margin:0 0 var(--s2)}
+#empty p{color:var(--text-2);margin:0}
+
+#profile{border-top:1px solid var(--rule);background:var(--ink-1);display:grid;grid-template-columns:auto 1fr;min-width:0}
+#profile .key{padding:var(--s3) var(--s4);border-right:1px solid var(--rule);width:184px;font-size:12px;color:var(--text-2)}
+#profile .key b{display:block;font:600 15px/1.2 var(--f-cond);color:var(--text);margin-bottom:var(--s1)}
+#profile .key ul{list-style:none;margin:var(--s2) 0 0;padding:0}
+#profile .key li{display:flex;align-items:center;gap:var(--s2);margin:2px 0}
+#profile .key i{display:inline-block;width:18px;border-top:2px solid}
+#svgwrap{overflow-x:auto;overflow-y:hidden;min-width:0}
+#svg{display:block}
+#svg text{font-family:var(--f-cond)}
+.pend{stroke:var(--text-3);stroke-dasharray:4 4}
+.tw .rm{opacity:0;cursor:pointer} .tw .rm circle{fill:#2a1512;stroke:var(--err)} .tw .rm text{fill:#ffb3a8}
+.asking .tw:hover .rm,.asking .tw:focus-visible .rm,.asking .tw.gone .rm{opacity:1}
+.asking .tw{cursor:pointer} .tw:focus-visible{outline:none} .tw:focus-visible .lbl{text-decoration:underline}
+.tw.gone .glyph{opacity:.25} .tw.gone .lbl{text-decoration:line-through;fill:var(--text-3)}
+.tw.gone .rm circle{fill:var(--ink-2);stroke:var(--text-2)} .tw.gone .rm text{fill:var(--text)}
+#removed{font-size:13px;color:var(--text);margin:0 0 var(--s3)} #removed:empty{display:none}
+#removed button{background:none;border:0;color:var(--link);text-decoration:underline;cursor:pointer;padding:0;font-size:13px}
+.work{stroke:var(--amber);stroke-dasharray:8 6;animation:flow 1s linear infinite}
+.done{stroke:var(--ok)}
+@keyframes flow{to{stroke-dashoffset:-14}}
+@media (prefers-reduced-motion:reduce){.work{animation:none}}
+
+@media (max-width:900px){
+  body{grid-template-columns:1fr;grid-template-rows:auto auto;overflow:auto;height:auto}
+  #side{border-right:0;border-bottom:1px solid var(--rule)} #scroll{overflow:visible}
+  #main{height:80vh} #profile .key{display:none} #profile{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<aside id="side" aria-label="Agent controls">
+  <header>
+    <h1 class="brand"><img src="/logo.png" alt="" width="30" height="32"><span>Line Clearance Agent</span></h1>
+    <p class="lede">Open a LAS or LAZ with any number of towers. The agent numbers the towers, marks every span in Potree and writes one Excel report per span.</p>
+  </header>
+  <div id="scroll">
+    <form id="setup" novalidate>
+      <fieldset>
+        <legend>Point cloud</legend>
+        <div class="f">
+          <label for="laz">LAS or LAZ files</label>
+          <div id="drop" tabindex="0" aria-describedby="lazHint">
+            <strong>Drop one or more .las / .laz files here</strong><br>or
+            <button type="button" class="btn" id="browse" style="margin-left:6px">Browse</button>
+          </div>
+          <ol id="flist" aria-live="polite"></ol>
+          <div class="file" style="margin-top:var(--s2)"><input id="laz" placeholder="or paste a full path and press Enter" autocomplete="off" aria-describedby="lazErr">
+            <button type="button" class="btn" id="addPath">Add</button></div>
+          <div class="hint" id="lazHint">Several files are merged into one cloud (for example the tiles of one line). The first file names the reports.
+            Browse and pasted paths are used where they are; dropped files are copied into this app's <code>data\uploads</code> folder first.</div>
+          <div class="err" id="lazErr" role="alert"></div>
+        </div>
+        <label class="check"><input type="checkbox" id="full" checked><span>Use every point<small>Exact values. Slower on large files.</small></span></label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Report header</legend>
+        <div class="f"><label for="line">Line details</label><input id="line" placeholder="765KV-GWALIOR-AGRA-ACL-C1"></div>
+        <div class="pair">
+          <div class="f"><label for="circuit">Circuit</label><input id="circuit" value="Circuit 1"></div>
+          <div class="f"><label for="capacity">Capacity</label><input id="capacity" value="765KV"></div>
+        </div>
+        <div class="f"><label for="prefix">Reference image prefix</label><input id="prefix" value="GWA_CKT1">
+          <div class="hint">Screenshots are named prefix-1, prefix-2 … and prefix-Span.</div></div>
+        <div class="pair">
+          <div class="f"><label for="capture">Data captured</label><input id="capture" type="date"></div>
+          <div class="f"><label for="inspect">Inspected</label><input id="inspect" type="date"></div>
+        </div>
+      </fieldset>
+
+      <details class="more">
+        <summary>More options</summary>
+        <div class="inner">
+          <div class="f"><label for="tower_no">First tower number</label><input id="tower_no" placeholder="T-90">
+            <div class="hint">A guess is enough. Once the towers are counted you confirm the numbers at both ends.</div></div>
+          <div class="f"><label for="ttype">Tower type</label>
+            <select id="ttype"><option value="auto">Detect automatically</option><option value="suspension">Suspension</option><option value="tension">Tension</option></select></div>
+          <label class="check"><input type="checkbox" id="swap" checked><span>Left and right as in our reports<small>Mirror of “facing forward along the line”.</small></span></label>
+          <div class="f"><label for="outdir">Output folder</label><input id="outdir" placeholder="Next to the file, in “&lt;name&gt; reports”"></div>
+          <div class="f"><label for="latlon_file">Tower lat / long sheet (Excel or CSV)</label>
+            <div class="file"><input id="latlon_file" placeholder="G:\towers\latlong.xlsx" autocomplete="off">
+              <button type="button" class="btn" id="browse2">Browse</button></div>
+            <div class="hint">One row per tower: Tower, Latitude, Longitude. Each report gets its own tower's position.</div></div>
+          <div class="f"><label for="latlon">Tower lat, long (single tower)</label><input id="latlon" placeholder="26.6137484, 78.2946954">
+            <div class="hint">Only used for a one-tower file without a sheet.</div></div>
+          <div class="f"><label for="bearing">Forward bearing in degrees</label><input id="bearing" inputmode="decimal" placeholder="Only for a single-tower file"></div>
+          <label class="check"><input type="checkbox" id="rev"><span>Measure the other span<small>Single-tower file only.</small></span></label>
+        </div>
+      </details>
+
+      <button type="submit" class="btn-primary" id="go">Run agent</button>
+      <div class="err" id="runErr" role="alert"></div>
+    </form>
+
+    <section id="summary" aria-label="Current run">
+      <div class="row"><div><div class="name" id="sumName"></div><div class="meta" id="sumMeta"></div></div>
+        <button type="button" class="btn" id="edit">New run</button></div>
+    </section>
+
+    <section id="run" aria-live="polite">
+      <ol class="stages">
+        <li id="s1"><canvas class="orb" aria-hidden="true"></canvas><span>Open the point cloud in Potree</span><span class="now"></span></li>
+        <li id="s2"><canvas class="orb" aria-hidden="true"></canvas><span>Find and number the towers</span><span class="now"></span></li>
+        <li id="s3"><canvas class="orb" aria-hidden="true"></canvas><span>Mark each span</span><span class="now"></span></li>
+        <li id="s4"><canvas class="orb" aria-hidden="true"></canvas><span>Review and export</span><span class="now"></span></li>
+      </ol>
+
+      <form id="ask" novalidate>
+        <h2 id="askt">Which towers are at the ends?</h2>
+        <p>In the viewer and in the line profile the towers are labelled from left to right. If one is not a real tower of this line, hover its number and click × to leave it out.</p>
+        <p id="removed" aria-live="polite"></p>
+        <div class="pair">
+          <div class="f"><label for="aleft" id="all">Tower 1 (leftmost)</label><input id="aleft" autocomplete="off"></div>
+          <div class="f"><label for="aright" id="arl">Last tower (rightmost)</label><input id="aright" autocomplete="off"></div>
+        </div>
+        <button type="submit" class="btn-primary" id="acont">Number the towers</button>
+        <div class="err" id="aerr" role="alert"></div>
+      </form>
+
+      <section id="exp" class="hide" aria-labelledby="expH">
+        <h2 id="expH">Check the lines, then export</h2>
+        <p>Every span is marked. Look through the lines in Potree. To move one, drag either end point; the value updates as you drag.</p>
+        <div class="undo">
+          <button type="button" class="btn" id="uBtn" disabled title="Ctrl+Z">Undo</button>
+          <button type="button" class="btn" id="rBtn" disabled title="Ctrl+Y">Redo</button>
+          <span class="keys">Ctrl+Z, Ctrl+Y</span>
+        </div>
+        <p id="expEd" class="ed"></p>
+        <label class="check"><input type="checkbox" id="withShots" checked><span>Include screenshots<small>One zip per span. The viewer photographs each line, so leave this window open until it says it is done.</small></span></label>
+        <button type="button" class="btn-primary" id="expBtn">Export reports</button>
+        <p id="expMsg" class="hint" role="status"></p>
+      </section>
+
+      <h2 class="sec hide" id="reportsH">Reports</h2>
+      <ul id="reports"></ul>
+      <div id="openwrap"></div>
+
+      <h2 class="sec hide" id="flagsH">Check in Potree</h2>
+      <ul id="flags"></ul>
+
+      <details class="log" id="logBox"><summary>Agent log</summary><pre id="log"></pre></details>
+    </section>
+  </div>
+</aside>
+
+<main id="main">
+  <div id="stage">
+    <iframe id="view" title="Potree point cloud viewer"></iframe>
+    <div id="empty"><div><canvas id="emptyOrb" aria-hidden="true"></canvas><h2 id="emptyH">Nothing open yet</h2>
+      <p id="emptyP">Choose a LAS or LAZ file and run the agent. The point cloud opens here and you can watch each tower get numbered and each span get marked.</p></div></div>
+  </div>
+  <section id="profile" aria-label="Line profile">
+    <div class="key"><b>Line profile</b><span id="profSum">Towers appear here once they are found.</span>
+      <ul><li><i style="border-color:var(--text-3);border-top-style:dashed"></i>Waiting</li>
+          <li><i style="border-color:var(--amber)"></i>Being marked</li>
+          <li><i style="border-color:var(--ok)"></i>Marked</li></ul></div>
+    <div id="svgwrap"><svg id="svg" role="img" aria-label="Towers and spans"></svg></div>
+  </section>
+</main>
+
+<script type="module">
+// thinking-orbs (npm) loading indicators: the active stage and the opening screen
+import { orb } from "/orb.js";
+const AMBER = "#f2b33d", ORB = {};
+window.LCA_orb = (id, state) => {
+  const el = document.getElementById(id), cv = el && el.querySelector("canvas.orb");
+  if (!cv) return;
+  if (!ORB[id]) ORB[id] = orb(cv, {state, size: 20, color: AMBER}); else ORB[id].setState(state);
+  el.classList.add("orbing");
+};
+const big = orb(document.getElementById("emptyOrb"), {state: "breathing", size: 64, color: AMBER, label: "Opening the point cloud"});
+window.LCA_bigOrb = state => big.setState(state);
+</script>
+<script>
+const $ = id => document.getElementById(id);
+const F = ["laz","tower_no","circuit","line","capacity","prefix","latlon","latlon_file","capture","inspect","ttype","bearing","outdir"];
+const store = {get(k){try{return localStorage.getItem("la_"+k)}catch(e){return null}}, set(k,v){try{localStorage.setItem("la_"+k,v)}catch(e){}}};
+F.forEach(k => { const v = store.get(k); if (v && k !== "laz") $(k).value = v; });
+["full","swap"].forEach(k => { const v = store.get(k); if (v !== null) $(k).checked = v === "1"; });
+const esc = t => String(t).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+/* ---------- line profile: fed by the agent's event stream ---------- */
+const P = {};
+function resetProfile(){ Object.assign(P, {towers: [], byKey: {}, byName: {}, working: null, done: new Set(), files: {}, removed: new Set(), asking: false}); draw(); }
+const spanKey = (a, b) => [a, b].sort().join("|");
+function spanOf(label){ const m = String(label || "").split(" - "); return m.length === 2 ? spanKey(m[0].trim(), m[1].trim()) : null; }
+
+function onEvent(e){
+  if (e.type === "towers") {
+    P.towers = e.towers.map(t => ({...t, name: null, ttype: null}));
+    P.byKey = {}; P.towers.forEach(t => P.byKey[t.key] = t);
+  } else if (e.type === "towers_removed") {
+    P.removed = new Set(e.keys); P.asking = false;
+  } else if (e.type === "tower_names") {
+    e.names.forEach(n => { const t = P.byKey[n.key]; if (t) { t.name = n.name; P.byName[n.name] = t; } });
+  } else if (e.type === "tower_type") {
+    const t = P.byName[e.name]; if (t) t.ttype = e.ttype;
+  } else if ((e.type === "measure" && e.m) || e.type === "skip") {
+    const k = spanOf(e.type === "measure" ? e.m.spanlabel : e.spanlabel);
+    if (k && k !== P.working) { if (P.working) P.done.add(P.working); P.working = k; }
+  } else if (e.type === "span") {
+    const k = spanOf(e.span); if (k) { P.done.add(k); if (P.working === k) P.working = null; }
+  } else if (e.type === "done") { if (P.working) P.done.add(P.working); P.working = null; }
+}
+
+function draw(){
+  const svg = $("svg"), wrap = $("svgwrap"), T = P.towers || [], H = wrap.clientHeight || 148;
+  svg.classList.toggle("asking", !!P.asking);
+  if (!T.length) { svg.innerHTML = ""; svg.setAttribute("width", 0); $("profSum").textContent = "Towers appear here once they are found."; return; }
+  const dist = (a, b) => Math.hypot(b.x - a.x, b.y - a.y);
+  // x positions from the along-line distance between neighbours: proportional, never cramped
+  const gaps = T.slice(1).map((t, i) => dist(T[i], t));
+  const avail = Math.max(wrap.clientWidth - 120, 300), tot = gaps.reduce((a, b) => a + b, 0) || 1;
+  const xs = [60]; gaps.forEach(g => xs.push(xs[xs.length - 1] + Math.max(g / tot * avail, 110)));
+  const W = xs[xs.length - 1] + 60, ground = H - 42, top = 22, arm = top + 10;
+  const kept = T.map((t, i) => i).filter(i => !P.removed.has(T[i].key));
+  let s = `<line x1="16" x2="${W - 16}" y1="${ground}" y2="${ground}" stroke="var(--rule)"/>`;
+  for (let j = 0; j < kept.length - 1; j++) {          // spans run between the towers that are kept
+    const ia = kept[j], ib = kept[j + 1], a = T[ia], b = T[ib];
+    const x0 = xs[ia] + 12, x1 = xs[ib] - 12, sag = Math.min(24, (x1 - x0) * 0.12);
+    const k = a.name && b.name ? spanKey(a.name, b.name) : null;
+    const st = k && P.done.has(k) ? "done" : k && P.working === k ? "work" : "pend";
+    let mx = (x0 + x1) / 2; const ly = arm + sag + 20, cx = mx;
+    for (let r = ia + 1; r < ib; r++) if (Math.abs(xs[r] - mx) < 40) mx = xs[r] + 52;     // keep clear of a left-out tower
+    s += `<path class="${st}" d="M${x0},${arm} Q${cx},${arm + 2 * sag} ${x1},${arm}" fill="none" stroke-width="2.2"/>`;
+    s += `<text x="${mx}" y="${ly}" text-anchor="middle" font-size="12" fill="var(--text-2)">${Math.round(dist(a, b))} m</text>`;
+    if (k && P.files[k]) s += `<a href="${P.files[k]}" target="_blank"><text x="${mx}" y="${ly + 15}" text-anchor="middle" font-size="12" fill="var(--link)" text-decoration="underline">Excel</text></a>`;
+  }
+  T.forEach((t, i) => {                                 // suspension = slim lattice, tension = wide body with a strain bar
+    const x = xs[i], ten = t.ttype === "tension", w = ten ? 11 : 7, h = ground - top, gone = P.removed.has(t.key);
+    const lbl = t.name || "Tower " + t.key;
+    const act = P.asking ? ` tabindex="0" role="button" aria-label="${gone ? "Use" : "Leave"} Tower ${t.key} ${gone ? "again" : "out of the measurements"}"` : "";
+    s += `<g class="tw${gone ? " gone" : ""}" data-k="${t.key}"${act}><title>${P.asking ? (gone ? "Use this tower again" : "Leave this tower out") : esc(lbl)}</title>
+      <g class="glyph" stroke="var(--text)" stroke-width="1.4" fill="none">
+      <path d="M${x - w},${ground} L${x - 2},${top} L${x + 2},${top} L${x + w},${ground}"/>
+      <path d="M${x - w * .7},${ground - h * .3} L${x + w * .7},${ground - h * .3} M${x - w * .45},${top + h * .38} L${x + w * .45},${top + h * .38}"/>
+      <path d="M${x - (ten ? 14 : 11)},${arm} L${x + (ten ? 14 : 11)},${arm}" stroke-width="${ten ? 3.2 : 1.6}"/></g>
+      <rect x="${x - 34}" y="${top - 6}" width="68" height="${H - top}" fill="transparent"/>
+      <text class="lbl" x="${x}" y="${ground + 16}" text-anchor="middle" font-size="13" font-weight="600" fill="var(--text)">${esc(lbl)}</text>
+      ${gone ? `<text x="${x}" y="${ground + 31}" text-anchor="middle" font-size="11" fill="var(--err)">Left out</text>`
+             : t.ttype ? `<text x="${x}" y="${ground + 31}" text-anchor="middle" font-size="11" fill="var(--text-3)">${ten ? "Tension" : "Suspension"}</text>` : ""}
+      ${P.asking ? `<g class="rm"><circle cx="${x + 20}" cy="${top + 2}" r="9" stroke-width="1.2"/><text x="${x + 20}" y="${top + 6.5}" text-anchor="middle" font-size="13" font-weight="700">${gone ? "\u21ba" : "\u00d7"}</text></g>` : ""}
+    </g>`;
+  });
+  svg.setAttribute("width", W); svg.setAttribute("height", H); svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.innerHTML = s;
+  const nk = kept.length, nd = P.done.size, nr = P.removed.size;
+  $("profSum").textContent = (nk === 1 ? "1 tower, one report" : `${nk} towers, ${nk - 1} spans`) + (nr ? `, ${nr} left out` : "") + (nd ? `, ${nd} marked.` : ".");
+}
+
+/* leaving a tower out: from the line profile, or from the x on a tower label in the viewer */
+function toggleTower(key){
+  if (!P.asking) return;
+  const n = P.towers.length;
+  if (P.removed.has(key)) P.removed.delete(key);
+  else if (n - P.removed.size > 1) P.removed.add(key);
+  else { $("aerr").textContent = "Keep at least one tower."; return; }
+  $("aerr").textContent = "";
+  try { $("view").contentWindow.postMessage({type: "lca-removed", keys: [...P.removed]}, "*"); } catch (e) {}
+  updateAsk(); draw();
+}
+function updateAsk(){
+  const keep = P.towers.filter(t => !P.removed.has(t.key));
+  if (!keep.length) return;
+  $("all").textContent = `Tower ${keep[0].key} (leftmost)`;
+  $("arl").textContent = `Tower ${keep[keep.length - 1].key} (rightmost)`;
+  const r = [...P.removed].sort((a, b) => a - b);
+  $("removed").innerHTML = r.length ? "Left out: " + r.map(k => `Tower ${k} <button type="button" data-undo="${k}">undo</button>`).join(", ") : "";
+  // keep the suggested end numbers consistent with the towers that are left, unless the engineer typed their own
+  if (!$("aright").dataset.typed) {
+    const m = /^(.*?)(\d+)\s*$/.exec($("aleft").value.trim());
+    if (m) { const up = askInfo.up, nr = +m[2] + (up ? 1 : -1) * (keep.length - 1);
+      if (nr >= 0) $("aright").value = m[1] + String(nr).padStart(m[2].length, "0"); }
+  }
+}
+let askInfo = {up: true};
+$("removed").addEventListener("click", ev => { const k = ev.target.dataset && ev.target.dataset.undo; if (k) toggleTower(+k); });
+$("aright").addEventListener("input", () => $("aright").dataset.typed = "1");
+$("svg").addEventListener("click", ev => { const g = ev.target.closest(".tw"); if (g && P.asking) toggleTower(+g.dataset.k); });
+$("svg").addEventListener("keydown", ev => { const g = ev.target.closest && ev.target.closest(".tw");
+  if (g && P.asking && (ev.key === "Enter" || ev.key === " " || ev.key === "Delete")) { ev.preventDefault(); toggleTower(+g.dataset.k);
+    const again = $("svg").querySelector(`.tw[data-k="${g.dataset.k}"]`); if (again) again.focus(); } });
+window.addEventListener("message", ev => { const d = ev.data || {}; if (d.type === "lca-toggle-tower") toggleTower(+d.key); });
+resetProfile();
+new ResizeObserver(draw).observe($("svgwrap"));
+
+/* ---------- setup ---------- */
+const DEAD = "The app is not responding. Check the window it is running in.";
+$("browse2").onclick = async () => {
+  try { const r = await (await fetch("/api/browse?kind=sheet", {method: "POST"})).json(); if (r.path) $("latlon_file").value = r.path; } catch (e) {}
+};
+/* ---------- input files: browse, paste a path, or drag and drop (several files are merged into one cloud) ---------- */
+const FILES = [];                                   // {path, name, size, state: "ok" | "up" | "err", pct, msg}
+const base = p => String(p).split(/[\\/]/).pop();
+const mb = n => n >= 1e9 ? (n / 1e9).toFixed(1) + " GB" : (n / 1e6).toFixed(0) + " MB";
+function renderFiles(){
+  $("flist").innerHTML = FILES.map((f, i) => `<li><span class="n">${i + 1}</span><span class="nm" title="${esc(f.path || f.name)}">${esc(f.name)}</span>
+    <span class="st ${f.state === "err" ? "err" : ""}">${f.state === "up" ? f.pct + "%" : f.state === "err" ? esc(f.msg || "failed") : (f.size ? mb(f.size) : "")}</span>
+    <button type="button" data-i="${i}" aria-label="Remove ${esc(f.name)}">&times;</button>
+    ${f.state === "up" ? `<div class="bar"><i style="width:${f.pct}%"></i></div>` : ""}</li>`).join("");
+  $("flist").querySelectorAll("button").forEach(b => b.onclick = () => { FILES.splice(+b.dataset.i, 1); renderFiles(); });
+  $("go").disabled = FILES.some(f => f.state === "up");
+}
+function addPath(p){
+  p = String(p || "").trim().replace(/^"|"$/g, ""); if (!p) return;
+  if (FILES.some(f => f.path === p)) return;
+  FILES.push({path: p, name: base(p), state: "ok"}); renderFiles();
+}
+function addDropped(file){
+  if (!/\.la[sz]$/i.test(file.name)) { $("lazErr").textContent = `${file.name}: only .las and .laz files.`; return; }
+  const f = {path: "", name: file.name, size: file.size, state: "up", pct: 0}; FILES.push(f); renderFiles();
+  const x = new XMLHttpRequest(); x.open("POST", "/api/upload?name=" + encodeURIComponent(file.name));
+  x.upload.onprogress = e => { if (e.lengthComputable) { f.pct = Math.floor(100 * e.loaded / e.total); renderFiles(); } };
+  x.onload = () => { let r = {}; try { r = JSON.parse(x.responseText); } catch (e) {}
+    if (r.ok) { f.path = r.path; f.state = "ok"; } else { f.state = "err"; f.msg = r.error || "failed"; }
+    renderFiles(); };
+  x.onerror = () => { f.state = "err"; f.msg = "upload failed"; renderFiles(); };
+  x.send(file);                                     // streamed from disk by the browser, in pieces on the server
+}
+const drop = $("drop");
+["dragenter","dragover"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave","drop"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => { $("lazErr").textContent = ""; [...e.dataTransfer.files].forEach(addDropped); });
+["dragover","drop"].forEach(t => window.addEventListener(t, e => e.preventDefault()));   // a miss must not open the file in the tab
+$("browse").onclick = async () => {
+  $("lazErr").textContent = "";
+  try { const r = await (await fetch("/api/browse", {method: "POST"})).json();
+    if (r.paths && r.paths.length) r.paths.forEach(addPath); else if (r.error) $("lazErr").textContent = r.error; }
+  catch (e) { $("lazErr").textContent = DEAD; }
+};
+$("addPath").onclick = () => { addPath($("laz").value); $("laz").value = ""; };
+$("laz").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); $("addPath").click(); } });
+$("setup").onsubmit = async ev => {
+  ev.preventDefault(); $("runErr").textContent = ""; $("lazErr").textContent = "";
+  if ($("laz").value.trim()) { addPath($("laz").value); $("laz").value = ""; }
+  const d = {full: $("full").checked, reverse: $("rev").checked, swap: $("swap").checked};
+  F.forEach(k => { if (k !== "laz") { d[k] = $(k).value.trim(); store.set(k, d[k]); } });
+  ["full","swap"].forEach(k => store.set(k, $(k).checked ? "1" : "0"));
+  d.files = FILES.filter(f => f.state === "ok" && f.path).map(f => f.path); d.laz = d.files[0] || "";
+  if (!d.files.length) { $("lazErr").textContent = "Add at least one LAS or LAZ file (drop it above, or Browse)."; $("drop").focus(); return; }
+  $("go").disabled = true;
+  let r; try { r = await (await fetch("/api/run", {method: "POST", body: JSON.stringify(d)})).json(); } catch (e) { r = {error: DEAD}; }
+  renderFiles();
+  if (r.error) { const bad = /^(File not found|Add at least|The same file)/.test(r.error); (bad ? $("lazErr") : $("runErr")).textContent = r.error; return; }
+  startRun(d);
+};
+$("edit").onclick = () => { if (running) return; document.body.classList.remove("running"); $("drop").focus(); };
+
+let running = false, since = 0, timer = null, asked = false, shownExport = -1, wantShots = false;
+
+/* ---------- review, undo / redo, export ---------- */
+const toViewer = msg => { try { $("view").contentWindow.postMessage(msg, "*"); } catch (e) {} };
+$("uBtn").onclick = () => toViewer({type: "lca-undo"});
+$("rBtn").onclick = () => toViewer({type: "lca-redo"});
+window.addEventListener("keydown", e => {
+  if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName) || !(e.ctrlKey || e.metaKey) || $("exp").classList.contains("hide")) return;
+  const k = e.key.toLowerCase();
+  if (k === "z" && !e.shiftKey) { e.preventDefault(); toViewer({type: "lca-undo"}); }
+  else if (k === "y" || (k === "z" && e.shiftKey)) { e.preventDefault(); toViewer({type: "lca-redo"}); }
+});
+window.addEventListener("message", e => {
+  const d = e.data || {};
+  if (d.type === "lca-hist") { $("uBtn").disabled = !d.undo; $("rBtn").disabled = !d.redo; }
+  if (d.type === "lca-edited") poll();
+  if (d.type === "lca-shots-done") $("expMsg").textContent = `Done. ${d.n} screenshots in ${d.zips} zip file${d.zips === 1 ? "" : "s"}, one per span. The Reference Image links in each report open them.`;
+});
+$("expBtn").onclick = async () => {
+  $("expMsg").textContent = ""; $("expBtn").disabled = true;
+  let r; try { r = await (await fetch("/api/export", {method: "POST"})).json(); } catch (e) { r = {error: DEAD}; }
+  if (r.error) { $("expMsg").textContent = r.error; $("expBtn").disabled = false; return; }
+  wantShots = $("withShots").checked; shownExport = -1; poll();
+};
+function startRun(d){
+  running = true; since = 0; asked = false; shownExport = -1; wantShots = false; resetProfile();
+  $("expMsg").textContent = ""; $("uBtn").disabled = $("rBtn").disabled = true;
+  document.body.classList.add("running", "ran"); $("edit").disabled = true;
+  $("sumName").textContent = base(d.laz) + (d.files.length > 1 ? ` + ${d.files.length - 1} more file${d.files.length > 2 ? "s" : ""}` : "");
+  $("sumMeta").textContent = [d.line, d.circuit, d.full ? "every point" : "thinned"].filter(Boolean).join(", ");
+  ["reports","openwrap","flags"].forEach(id => $(id).innerHTML = ""); $("log").textContent = "";
+  $("reportsH").classList.add("hide"); $("flagsH").classList.add("hide");
+  $("view").removeAttribute("src"); delete $("view").dataset.u; $("empty").style.display = "";
+  $("emptyH").textContent = "Opening the point cloud"; $("emptyP").textContent = "Converting the file for Potree. Large files take a few minutes.";
+  clearInterval(timer); timer = setInterval(poll, 700); poll();
+}
+
+/* ---------- tower numbering ---------- */
+$("ask").onsubmit = async ev => {
+  ev.preventDefault(); $("aerr").textContent = "";
+  const body = {left: $("aleft").value, right: $("aright").value, remove: [...P.removed]};
+  let r; try { r = await (await fetch("/api/numbers", {method: "POST", body: JSON.stringify(body)})).json(); }
+  catch (e) { r = {error: DEAD}; }
+  if (r.error) { $("aerr").textContent = r.error; return; }
+  $("ask").style.display = "none"; asked = false; P.asking = false; draw();
+  try { $("view").contentWindow.postMessage({type: "lca-lock"}, "*"); } catch (e) {}
+};
+
+/* ---------- polling ---------- */
+const ORB_STATE = {1: "breathing", 2: "searching", 3: "working", 4: "listening"};
+const NOW = {1: "Converting and loading the cloud", 2: "Looking for towers", 3: "Marking", 4: "Waiting for you to export"};
+async function poll(){
+  let s;
+  try {
+    s = await (await fetch("/api/status")).json();
+    const ev = await (await fetch("/api/events?since=" + since)).json();
+    since = ev.next; ev.events.forEach(onEvent);
+  } catch (e) { return; }
+  ["s1","s2","s3","s4"].forEach((id, i) => {
+    const n = i + 1, el = $(id);
+    const st = s.error && s.step === n ? "bad" : (s.step > n || s.state === "done") ? "done" : s.step === n ? "on" : "";
+    el.className = (n === 1 && st === "done" && !s.view) ? "skip" : st;
+    if (n === 4 && st === "on" && s.state === "exporting") el.querySelector(".now").textContent = "Writing the reports and the marked LAZ";
+    if (st === "on" && window.LCA_orb) window.LCA_orb(id, s.state === "ask" ? "listening" : s.state === "exporting" ? "composing" : ORB_STATE[n]);
+    el.querySelector(".now").textContent = st === "on" ? (s.state === "ask" && n === 2 ? "Waiting for you" : NOW[n])
+      : (n === 1 && st === "done" && !s.view) ? "Live view not available. The reports are still written; see the agent log." : "";
+  });
+  $("empty").classList.toggle("busy", running && !s.view && s.step <= 1 && !s.error);
+  if (!s.view && s.step > 1) { $("emptyH").textContent = "Live view not available";
+    $("emptyP").textContent = "Potree could not open this cloud, so the marking is not shown. The agent carries on and writes every report; the agent log says why the view failed."; }
+  if (s.state === "ask" && s.ask && !asked) {
+    asked = true; $("ask").style.display = "block"; P.asking = true; P.removed = new Set(); delete $("aright").dataset.typed;
+    const ml = /(\d+)\s*$/.exec(s.ask.left || ""), mr = /(\d+)\s*$/.exec(s.ask.right || "");
+    askInfo.up = !(ml && mr && +mr[1] < +ml[1]);
+    $("askt").textContent = `${s.ask.n} towers found. Which numbers are at the ends?`;
+    $("arl").textContent = `Tower ${s.ask.n} (rightmost)`;
+    $("aleft").value = s.ask.left; $("aright").value = s.ask.right; $("aerr").textContent = ""; updateAsk();
+    $("ask").scrollIntoView({block: "nearest"}); $("aleft").focus(); $("aleft").select();
+  }
+  if (s.view && $("view").dataset.u !== s.view) { $("view").dataset.u = s.view; $("view").src = s.view; $("empty").style.display = "none"; }
+  const lg = $("log"), atEnd = lg.scrollTop + lg.clientHeight >= lg.scrollHeight - 20;
+  lg.textContent = s.log; if (atEnd) lg.scrollTop = lg.scrollHeight;
+  const fl = s.flags || []; $("flagsH").classList.toggle("hide", !fl.length);
+  $("flags").innerHTML = fl.map(f => `<li>${esc(f)}</li>`).join("");
+  (s.files || []).forEach(f => { const m = /^Excel report (.+)$/.exec(f.label); const k = m && spanOf(m[1]); if (k) { P.files[k] = f.url; P.done.add(k); } });
+  draw();
+  // review -> export
+  const review = s.state === "review" || s.state === "exporting" || s.state === "done";
+  $("exp").classList.toggle("hide", !review);
+  if (review) {
+    running = false; $("edit").disabled = s.state === "exporting";
+    const n = s.edits || 0;
+    $("expEd").textContent = (n ? `${n} line${n === 1 ? "" : "s"} moved by hand. ` : "")
+      + (s.exported && s.dirty ? "Changed since the last export: export again to update the reports." : "");
+    $("expBtn").disabled = s.state === "exporting";
+    $("expBtn").textContent = s.state === "exporting" ? "Exporting" : s.exported ? (s.dirty ? "Export again" : "Exported") : "Export reports";
+    if (s.state === "done" && !s.dirty) $("expBtn").disabled = true;
+  }
+  if (s.export_error) { $("expMsg").textContent = s.export_error; wantShots = false; }
+  if ((s.state === "done" && s.exported !== shownExport) || s.state === "error") {
+    shownExport = s.exported;
+    const files = s.files || []; $("reportsH").classList.toggle("hide", !files.length);
+    $("reports").innerHTML = files.map(f => { const m = /^Excel report (.+)$/.exec(f.label);
+      return `<li><span class="sp">${esc((m ? m[1] : f.label).replace(" - ", " – "))}</span><a href="${f.url}" target="_blank">${m ? "Open Excel" : "Download"}</a></li>`; }).join("");
+    if (s.folder && files.length) { $("openwrap").innerHTML = `<button type="button" class="btn" id="openf" style="width:100%;margin-bottom:16px">Open the output folder</button>`;
+      $("openf").onclick = () => fetch("/api/open", {method: "POST"}); }
+    if (s.state === "done" && wantShots) {
+      wantShots = false;
+      if (s.view) { $("expMsg").textContent = "Reports written. Taking the screenshots in the viewer; one zip per span will download.";
+        $("view").contentWindow.postMessage({type: "lca-shoot"}, "*"); }
+      else $("expMsg").textContent = "Reports written. Screenshots need the live Potree view, which is not available for this run.";
+    } else if (s.state === "done") $("expMsg").textContent = "Reports written.";
+  }
+  if (s.state === "error") {
+    clearInterval(timer); running = false; $("edit").disabled = false;
+    $("runErr").textContent = s.error; $("logBox").open = true;
+    document.body.classList.remove("running");
+  }
+}
+</script>
+</body>
+</html>

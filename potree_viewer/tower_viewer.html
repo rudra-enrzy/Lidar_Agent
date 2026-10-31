@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><title>Tower clearance viewer (Potree)</title>
+<link rel="stylesheet" href="build/potree/potree.css">
+<link rel="stylesheet" href="libs/jquery-ui/jquery-ui.min.css">
+<link rel="stylesheet" href="libs/openlayers3/ol.css">
+<link rel="stylesheet" href="libs/spectrum/spectrum.css">
+<link rel="stylesheet" href="libs/jstree/themes/mixed/style.css">
+<style>
+:root{--ink-1:rgba(19,35,42,.94);--ink-2:#1b2f37;--ink-3:#24404a;--rule:#2d4954;--text:#e4edef;--text-2:#9bb1b8;--text-3:#6f8a93;
+  --amber:#f2b33d;--ok:#6fd39b;--f:"Bahnschrift","Barlow","Segoe UI",system-ui,sans-serif;--fc:"Bahnschrift SemiCondensed","Barlow Semi Condensed","Bahnschrift",sans-serif}
+#lst{position:absolute;right:12px;top:12px;width:340px;max-height:calc(100% - 24px);display:flex;flex-direction:column;background:var(--ink-1);
+  color:var(--text);font:13px/1.4 var(--f);border:1px solid var(--rule);border-radius:6px;z-index:10}
+#lst .hd{padding:10px 12px 8px;border-bottom:1px solid var(--rule)}
+#ttl{font:600 16px/1.2 var(--fc)}
+#lst .lg{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--text-2);margin-top:4px}
+#lst .lg i{display:inline-block;width:12px;border-top:3px solid;vertical-align:middle;margin-right:4px}
+#btns{display:flex;flex-wrap:wrap;gap:6px;padding:8px 12px;border-bottom:1px solid var(--rule)}
+#btns button{font:500 13px/1 var(--fc);height:28px;padding:0 10px;border-radius:4px;border:1px solid var(--rule);background:var(--ink-2);color:var(--text);cursor:pointer}
+#btns button:hover{background:var(--ink-3)} #btns button:disabled{opacity:.45;cursor:not-allowed}
+#btns button:focus-visible,#lst .it:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
+#btns .opts{width:100%;display:flex;gap:10px;align-items:center;font-size:12px;color:var(--text-2)}
+#btns select{background:#0d181d;color:var(--text);border:1px solid var(--rule);border-radius:4px;height:24px}
+#items{overflow:auto;padding:4px 0 8px}
+#lst .sph{font:600 14px/1.2 var(--fc);color:var(--text);padding:10px 12px 4px}
+#lst .it{display:flex;justify-content:space-between;gap:8px;padding:5px 12px;cursor:pointer;border-left:3px solid transparent}
+#lst .it:hover{background:var(--ink-2)} #lst .it.cur{background:var(--ink-3);border-left-color:var(--amber)}
+#lst .it .n{color:var(--text-3);margin-right:6px;font-variant-numeric:tabular-nums}
+#lst .it.ed .v::before{content:"moved ";color:var(--amber);font-size:11px}
+#lst .v{color:var(--ok);white-space:nowrap;font-variant-numeric:tabular-nums}
+#lst .sk{color:var(--text-3);cursor:default} #lst .sk:hover{background:none}
+#msg{color:var(--amber);padding:0 12px 10px;font-size:12px} #msg:empty{display:none}
+.annotation .rmv{display:none;margin-left:6px;width:20px;height:20px;border-radius:50%;border:1px solid #ff8070;background:#2a1512;color:#ffb3a8;
+  font:700 14px/16px var(--f);cursor:pointer;padding:0;pointer-events:auto}
+.annotation:hover .rmv,.annotation .rmv:focus-visible,.annotation.gone .rmv{display:inline-block}
+.annotation .rmv:hover{background:#ff8070;color:#2a1512}
+.annotation.gone .annotation-label{text-decoration:line-through;opacity:.6}
+.annotation.gone .rmv{border-color:#9bb1b8;background:#1b2f37;color:#e4edef}
+#ban{position:absolute;left:60px;top:12px;max-width:55%;background:var(--ink-1);color:var(--text);border:1px solid var(--rule);
+  border-left:3px solid var(--amber);font:14px/1.35 var(--f);padding:8px 12px;border-radius:4px;z-index:10;display:none}
+</style></head><body>
+<script src="libs/jquery/jquery-3.1.1.min.js"></script>
+<script src="libs/spectrum/spectrum.js"></script>
+<script src="libs/jquery-ui/jquery-ui.min.js"></script>
+<script src="libs/other/BinaryHeap.js"></script>
+<script src="libs/tween/tween.min.js"></script>
+<script src="libs/d3/d3.js"></script>
+<script src="libs/proj4/proj4.js"></script>
+<script src="libs/openlayers3/ol.js"></script>
+<script src="libs/i18next/i18next.js"></script>
+<script src="libs/jstree/jstree.js"></script>
+<script src="build/potree/potree.js"></script>
+<script src="libs/plasio/js/laslaz.js"></script>
+<div class="potree_container" style="position:absolute;width:100%;height:100%;left:0;top:0">
+  <div id="potree_render_area"></div><div id="potree_sidebar_container"></div></div>
+<div id="ban"></div>
+<div id="lst" role="region" aria-label="Measurements"><div class="hd"><div id="ttl">Measurements</div>
+  <div class="lg"><span><i style="border-color:#22d3ee"></i>Left</span><span><i style="border-color:#84cc16"></i>Middle</span><span><i style="border-color:#fb923c"></i>Right</span><span><i style="border-color:#e879f9"></i>OPGW</span><span>facing forward</span></div></div>
+  <div id="btns"></div><div id="items" role="list"></div><div id="msg" role="status"></div></div>
+<script type="module">
+import * as THREE from "./libs/three.js/build/three.module.js";
+import {Line2} from "./libs/three.js/lines/Line2.js";
+import {LineGeometry} from "./libs/three.js/lines/LineGeometry.js";
+import {LineMaterial} from "./libs/three.js/lines/LineMaterial.js";
+const q = new URLSearchParams(location.search);
+const cloud = q.get("cloud"), markersUrl = q.get("markers"), live = q.get("live") === "1";
+const viewer = window.viewer = new Potree.Viewer(document.getElementById("potree_render_area"));
+viewer.setEDLEnabled(true); viewer.setFOV(60); viewer.setPointBudget(25_000_000);   // draw (up to) 25 M points at once - raise it in the panel to see every point
+viewer.loadGUI(() => { viewer.setLanguage("en"); $("#menu_tools").next().show(); $("#menu_scene").next().show(); });
+const msg = t => document.getElementById("msg").textContent = t;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+let markers = [], measures = [], shooting = false;
+
+async function capture(i) {
+  // one measurement per picture: hide the others and the helper lines while capturing
+  const vis = measures.map(x => x.visible), lv = overlays.map(x => x.visible);
+  measures.forEach((x, j) => x.visible = (j === i) && !isSpan(j)); overlays.forEach(x => x.visible = false);
+  focus(i);
+  // Drive the frames ourselves: the browser pauses requestAnimationFrame when this window is in the background or
+  // busy, and then the canvas still shows an OLD view while the header gets the new label. Rendering here makes the
+  // picture always match its label - even if you switch to another window while the screenshots are taken.
+  const [p, l] = camFor(markers[i]);
+  if (window.TWEEN) TWEEN.removeAll();                // a running camera animation (fit to screen) would move it again
+  for (let t = 0; t < 26; t++) {                      // ~2.6 s: let the octree nodes around the line stream in
+    viewer.scene.view.position.copy(p); viewer.scene.view.lookAt(l);
+    viewer.loop(performance.now()); await sleep(100);
+  }
+  viewer.scene.view.position.copy(p); viewer.scene.view.lookAt(l);
+  viewer.loop(performance.now());                     // render this exact view, then read it in the same task
+  const blob = await annotate(markers[i]);
+  overlays.forEach((x, j) => x.visible = lv[j]); only(current);
+  return blob;
+}
+function annotate(m) {
+  // picture = the Potree view + a header band: Observation Type and value, then reference / line / tower / span
+  const src = viewer.renderer.domElement, W = src.width, H = src.height;
+  const band = Math.round(Math.max(70, H * 0.1)), f = Math.round(band * 0.34), pad = Math.round(f * 0.7);
+  const c = document.createElement("canvas"); c.width = W; c.height = H + band;
+  const g = c.getContext("2d");
+  g.fillStyle = "#0b1220"; g.fillRect(0, 0, W, band);
+  g.fillStyle = "#dc2626"; g.fillRect(0, band - 4, W, 4);
+  g.drawImage(src, 0, band);
+  g.textBaseline = "top";
+  g.fillStyle = "#ffffff"; g.font = `bold ${f}px "Segoe UI", Arial, sans-serif`;
+  const val = (m.value ?? m.value === 0) ? `${Number(m.value).toFixed(2)} m` : "";
+  const title = String(m.label).replace(/\s+/g, " ").trim();
+  g.fillText(title, pad, Math.round(band * 0.12));
+  const lw = g.measureText(title).width;
+  g.fillStyle = "#4ade80"; g.fillText("  " + val, pad + lw, Math.round(band * 0.12));
+  g.fillStyle = "#fbbf24"; g.font = `${Math.round(f * 0.6)}px "Segoe UI", Arial, sans-serif`;
+  g.fillText([m.name, m.caption].filter(Boolean).join("   |   "), pad, Math.round(band * 0.12 + f * 1.3));
+  return new Promise(r => c.toBlob(r, "image/png"));
+}
+async function shootAll() {
+  if (shooting) return; shooting = true;
+  try { await shootAllInner(); } finally { shooting = false; }
+}
+async function shootAllInner() {
+  // every span -> one zip of its pictures. In the app the pictures are also saved next to the Excel reports
+  // (<reports>/<span>/<name>.png): the Reference Image cells of each report link to exactly these files.
+  const groups = {}, app = live;
+  let saved = app;
+  for (let i = 0; i < markers.length; i++) {
+    msg(`Screenshot ${i + 1} of ${markers.length}: ${markers[i].name}`);
+    const blob = await capture(i), folder = markers[i].folder || "screenshots", name = markers[i].name + ".png";
+    (groups[folder] = groups[folder] || []).push({name, blob});
+    if (saved) {
+      try { const r = await fetch(`/api/shot?folder=${encodeURIComponent(folder)}&name=${encodeURIComponent(name)}`, {method: "POST", body: blob});
+        if (!r.ok) saved = false; } catch (e) { saved = false; }
+    }
+  }
+  const folders = Object.keys(groups);
+  for (const folder of folders) {
+    msg(`Zipping ${folder} ...`);
+    let done = false;
+    if (saved) {
+      try { const r = await (await fetch("/api/shots_zip", {method: "POST", body: JSON.stringify({folder})})).json();
+        if (r.ok) { download(r.url, r.name); done = true; } } catch (e) {}
+    }
+    if (!done) download(URL.createObjectURL(await makeZip(groups[folder].map(f => ({path: `${folder}/${f.name}`, blob: f.blob})))),
+                        `${folder}_screenshots.zip`);
+    await sleep(600);                                   // browsers block a burst of downloads
+  }
+  window.parent.postMessage({type: "lca-shots-done", n: markers.length, zips: folders.length}, "*");
+  msg(`${markers.length} screenshots in ${folders.length} zip file${folders.length === 1 ? "" : "s"}, one per span. ` +
+      (saved ? "They are also saved next to the Excel reports, so the Reference Image links in each report open them."
+             : "Unzip each one next to its Excel report so the Reference Image links open the pictures."));
+}
+function download(url, name) { const x = document.createElement("a"); x.href = url; x.download = name; document.body.appendChild(x); x.click(); x.remove(); }
+// minimal ZIP writer (stored, no compression - PNG is already compressed)
+const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+const crc32 = u => { let c = 0xFFFFFFFF; for (let i = 0; i < u.length; i++) c = CRC[(c ^ u[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+async function makeZip(files) {
+  const enc = new TextEncoder(), parts = [], central = []; let off = 0;
+  const d = new Date(), dt = ((d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1)), dd = (((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate());
+  for (const f of files) {
+    const data = new Uint8Array(await f.blob.arrayBuffer()), name = enc.encode(f.path), crc = crc32(data);
+    const h = new DataView(new ArrayBuffer(30));
+    [[0, 0x04034b50, 4], [4, 20, 2], [6, 0x0800, 2], [8, 0, 2], [10, dt, 2], [12, dd, 2], [14, crc, 4], [18, data.length, 4], [22, data.length, 4], [26, name.length, 2], [28, 0, 2]]
+      .forEach(([o, v, n]) => n === 4 ? h.setUint32(o, v, true) : h.setUint16(o, v, true));
+    const c = new DataView(new ArrayBuffer(46));
+    [[0, 0x02014b50, 4], [4, 20, 2], [6, 20, 2], [8, 0x0800, 2], [10, 0, 2], [12, dt, 2], [14, dd, 2], [16, crc, 4], [20, data.length, 4], [24, data.length, 4], [28, name.length, 2], [30, 0, 2], [32, 0, 2], [34, 0, 2], [36, 0, 2], [38, 0, 4], [42, off, 4]]
+      .forEach(([o, v, n]) => n === 4 ? c.setUint32(o, v, true) : c.setUint16(o, v, true));
+    parts.push(h, name, data); central.push(c, name); off += 30 + name.length + data.length;
+  }
+  const size = central.reduce((a, x) => a + x.byteLength, 0), e = new DataView(new ArrayBuffer(22));
+  [[0, 0x06054b50, 4], [4, 0, 2], [6, 0, 2], [8, files.length, 2], [10, files.length, 2], [12, size, 4], [16, off, 4], [20, 0, 2]]
+    .forEach(([o, v, n]) => n === 4 ? e.setUint32(o, v, true) : e.setUint16(o, v, true));
+  return new Blob([...parts, ...central, e], {type: "application/zip"});
+}
+
+
+const ban = t => { const b = document.getElementById("ban"); b.style.display = t ? "block" : "none"; b.textContent = t || ""; };
+const mats = [], overlays = [];
+viewer.addEventListener("update", () => mats.forEach(m => viewer.renderer.getSize(m.resolution)));
+function addLine(pts, color, width) {          // pts: [[x,y,z],...] world coords
+  const o = pts[0], g = new LineGeometry();
+  g.setPositions(pts.flatMap(p => [p[0] - o[0], p[1] - o[1], p[2] - o[2]]));
+  const m = new LineMaterial({color, linewidth: width, resolution: new THREE.Vector2(1000, 1000)}); mats.push(m);
+  const l = new Line2(g, m); l.position.set(o[0], o[1], o[2]); viewer.scene.scene.add(l); overlays.push(l); return l;
+}
+function fly(pos, look, ms = 900) {
+  return new Promise(res => {
+    const v = viewer.scene.view, p0 = v.position.clone(), t0 = v.getPivot().clone(), s = performance.now();
+    (function step(now) {
+      const k = Math.min(1, (now - s) / ms), e = k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+      v.position.copy(p0.clone().lerp(pos, e)); v.lookAt(t0.clone().lerp(look, e));
+      k < 1 ? requestAnimationFrame(step) : res();
+    })(performance.now());
+  });
+}
+function camFor(m) {
+  // camera per row: suspension = earlier reference folders, tension = T-108 reference pictures
+  const a = new THREE.Vector3(...m.points[0]), b = new THREE.Vector3(...m.points[1]);
+  const mid = a.clone().add(b).multiplyScalar(.5), len = b.clone().sub(a).length();
+  const u = m.span ? new THREE.Vector3(m.span[0], m.span[1], 0).normalize() : new THREE.Vector3(1, 0, 0);
+  const side = new THREE.Vector3(-u.y, u.x, 0).multiplyScalar(m.vside || 1);   // the measured wire's own side
+  const Z = new THREE.Vector3(0, 0, 1), key = m.key || "";
+  const mix = (s, f, z) => side.clone().multiplyScalar(s).add(u.clone().multiplyScalar(f)).add(Z.clone().multiplyScalar(z)).normalize();
+  let n, dist;
+  if (m.ttype !== "tension" && key !== "span") {
+    // SUSPENSION towers: views from the earlier reference folders (unchanged)
+    const towerRow = /^[st]_/.test(key);
+    const sd = new THREE.Vector3(-u.y, u.x, 0);
+    n = b.clone().sub(a).normalize().cross(u);
+    if (n.length() < 1e-3) n = sd.clone();
+    n.normalize(); if (n.z < 0) n.negate();
+    if (towerRow) n = u.clone().add(new THREE.Vector3(0, 0, 0.18)).normalize();       // from the forward span
+    else if (n.z > 0.8) n.add(sd.clone().multiplyScalar(0.5)).normalize();            // not straight down
+    else { n.z = Math.max(n.z, 0.15); n.normalize(); }                                // side views: a little above
+    dist = towerRow ? Math.max(len * 2.0, 16) : Math.max(len * 1.4, 18);
+  } else if (key === "span") {                                   // Span: from the side, a little above, both towers in frame
+    n = mix(1, 0, 0.25); dist = Math.max(len * 0.95, 60);
+  } else if (/^t_([LR]_arm|M_upper|M_lower|[LMR]_horn)$/.test(key)) {
+    // jumper drop + arcing horn: from the SIDE of the tower, close, slightly above (the jumper loop seen as a U)
+    n = mix(1, 0.25, 0.2); dist = Math.max(len * 1.8, 12);
+  } else if (/^[st]_/.test(key)) {
+    // other tower rows (jumper / conductor to leg, tower body): from the forward span looking back at the tower
+    n = u.clone().add(new THREE.Vector3(0, 0, 0.18)).normalize(); dist = Math.max(len * 2.0, 16);
+  } else if (/^(gnd|cross)/.test(key)) {
+    // conductor -> ground / road / crossing line: oblique from the side and above, looking a little along the span
+    n = mix(1, 0.4, 0.45); dist = Math.max(len * 1.5, 30);
+  } else {
+    // wire to wire at mid-span (phases, OPGW): from above at ~35 deg, from the side, wires running across the picture
+    n = mix(1, 0.35, 0.75); dist = Math.max(len * 1.8, 30);
+  }
+  return [mid.clone().add(n.multiplyScalar(dist)), mid];
+}
+// ONE line on screen at a time (like a hand measurement); "Show all lines" toggles the overview
+let showAll = false, current = -1;
+const isSpan = j => markers[j] && markers[j].key === "span";     // the Span picture: whole span, no line drawn
+function only(i) {
+  current = i;
+  measures.forEach((x, j) => x.visible = (showAll || j === i) && !isSpan(j));
+  document.querySelectorAll("#items .it").forEach(el => el.classList.toggle("cur", +el.dataset.i === i));
+}
+function focus(i) { only(i); const [p, l] = camFor(markers[i]); viewer.scene.view.position.copy(p); viewer.scene.view.lookAt(l); }
+function addMeasure(m, animate) {
+  const ms = new Potree.Measure(); ms.name = m.name; ms.showDistances = true; ms.showCoordinates = false; ms.closed = false;
+  m.points.forEach(p => ms.addMarker(new THREE.Vector3(...p)));
+  viewer.scene.addMeasurement(ms); measures.push(ms); markers.push(m);
+  spanHeader(m.spanlabel || m.folder);
+  const i = markers.length - 1, d = document.createElement("div"); d.className = "it";
+  d.setAttribute("role", "listitem"); d.tabIndex = 0;
+  const num = m.name.split("-").pop(), val = m.value == null ? "" : Number(m.value).toFixed(2) + " m";
+  d.innerHTML = `<span><span class="n">${num}</span>${m.label}</span><span class="v">${val}</span>`;
+  d.dataset.i = i; d.onclick = () => focus(i); d.onkeydown = ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); focus(i); } };
+  document.getElementById("items").appendChild(d); ITEMS[i] = d;
+  wire(ms, i);
+  only(i);                                              // a new line replaces the previous one on screen
+  document.getElementById("ttl").textContent = `Measurements: ${markers.length}`;
+  return i;
+}
+/* ---------- moving a line by hand, with undo / redo ----------
+   Drag either end point of the line on screen (it snaps to the point cloud). The value, the list, the report and the
+   screenshots follow the moved line. Ctrl+Z undoes, Ctrl+Y or Ctrl+Shift+Z redoes. */
+const ITEMS = {}, HIST = [], REDO = [];
+let editable = !live;                                     // live run: only after the agent has finished marking
+const snapPts = ms => ms.points.map(p => p.position.toArray());
+const samePts = (a, b) => a.length === b.length && a.every((p, k) => p.every((c, j) => Math.abs(c - b[k][j]) < 1e-4));
+function wire(ms, i) {
+  ms._snap = snapPts(ms); markers[i]._orig = ms._snap;     // where the agent put it
+  ms.addEventListener("marker_moved", () => { if (!ms._busy) showValue(i); });
+  ms.addEventListener("marker_dropped", () => {
+    if (!editable) { setPts(i, ms._snap); msg("Lines can be moved once the agent has finished marking."); return; }
+    const before = ms._snap, after = snapPts(ms);
+    if (samePts(before, after)) return;
+    HIST.push({i, before, after}); REDO.length = 0; ms._snap = after;
+    commit(i); undoButtons();
+  });
+}
+function setPts(i, pts) {
+  const ms = measures[i]; ms._busy = true;
+  pts.forEach((p, k) => ms.setPosition(k, new THREE.Vector3(...p)));
+  ms._busy = false; ms._snap = snapPts(ms); showValue(i);
+}
+function showValue(i) {
+  const m = markers[i], P = snapPts(measures[i]);
+  m.points = P; m.value = Math.round(new THREE.Vector3(...P[0]).distanceTo(new THREE.Vector3(...P[1])) * 100) / 100;
+  const v = ITEMS[i] && ITEMS[i].querySelector(".v"); if (v) v.textContent = m.value.toFixed(2) + " m";
+}
+async function commit(i) {
+  const m = markers[i], el = ITEMS[i];
+  const moved = !samePts(m.points, m._orig);
+  if (live) {
+    try {
+      const r = await (await fetch("/api/edit", {method: "POST", body: JSON.stringify({folder: m.folder, key: m.key, points: m.points})})).json();
+      if (r.error) { msg(r.error); return; }
+      m.value = r.value; const v = el && el.querySelector(".v"); if (v && r.value != null) v.textContent = Number(r.value).toFixed(2) + " m";
+    } catch (e) { msg("The app did not save this change. Is it still running?"); }
+  }
+  if (el) el.classList.toggle("ed", moved);
+  window.parent.postMessage({type: "lca-edited"}, "*");
+}
+function undo() { const h = HIST.pop(); if (!h) return; setPts(h.i, h.before); REDO.push(h); only(h.i); commit(h.i); undoButtons(); msg("Undone: " + markers[h.i].label); }
+function redo() { const h = REDO.pop(); if (!h) return; setPts(h.i, h.after); HIST.push(h); only(h.i); commit(h.i); undoButtons(); msg("Redone: " + markers[h.i].label); }
+function undoButtons() {
+  const u = document.getElementById("undoBtn"), r = document.getElementById("redoBtn");
+  if (u) u.disabled = !HIST.length; if (r) r.disabled = !REDO.length;
+  window.parent.postMessage({type: "lca-hist", undo: HIST.length, redo: REDO.length}, "*");
+}
+window.addEventListener("keydown", e => {
+  if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName) || !(e.ctrlKey || e.metaKey)) return;
+  const k = e.key.toLowerCase();
+  if (k === "z" && !e.shiftKey) { e.preventDefault(); undo(); }
+  else if (k === "y" || (k === "z" && e.shiftKey)) { e.preventDefault(); redo(); }
+});
+window.addEventListener("message", e => {
+  const d = e.data || {};
+  if (d.type === "lca-undo") undo(); if (d.type === "lca-redo") redo();
+  if (d.type === "lca-shoot") shootAll();
+});
+
+let lastSpan = null;
+function spanHeader(t) {
+  if (!t || t === lastSpan) return; lastSpan = t;
+  const h = document.createElement("div"); h.textContent = "Span " + t; h.className = "sph";
+  document.getElementById("items").appendChild(h);
+}
+const ANN = {}, BOX = {}, RBTN = {};
+// a false tower can be left out while the agent waits for the tower numbers: hover the tower label -> x
+function addRemoveButton(an, key) {
+  const b = document.createElement("button"); b.className = "rmv"; b.type = "button";
+  b.textContent = "\u00d7"; b.title = "Leave this tower out"; b.setAttribute("aria-label", `Leave Tower ${key} out of the measurements`);
+  b.onclick = ev => { ev.stopPropagation(); window.parent.postMessage({type: "lca-toggle-tower", key}, "*"); };
+  an.elTitlebar[0].appendChild(b); RBTN[key] = b;
+}
+function showRemoved(keys) {
+  const set = new Set(keys);
+  for (const k of Object.keys(RBTN)) {
+    const gone = set.has(+k), an = ANN[k], b = RBTN[k];
+    if (an) { an.domElement[0].classList.toggle("gone", gone); an.title = gone ? `Tower ${k} - left out` : `Tower ${k}`; an.elTitlebar[0].appendChild(b); }
+    b.textContent = gone ? "\u21ba" : "\u00d7"; b.title = gone ? "Use this tower again" : "Leave this tower out";
+    b.setAttribute("aria-label", gone ? `Use Tower ${k} again` : `Leave Tower ${k} out of the measurements`);
+    (BOX[k] || []).forEach(l => l.visible = !gone);
+  }
+}
+window.addEventListener("message", ev => {
+  const d = ev.data || {};
+  if (d.type === "lca-removed") showRemoved(d.keys || []);
+  if (d.type === "lca-lock") Object.values(RBTN).forEach(b => b.remove());
+});
+function buttons(pc) {
+  const b = document.getElementById("btns");
+  const mk = (t, f) => { const x = document.createElement("button"); x.textContent = t; x.onclick = ev => f(ev); b.appendChild(x); };
+  mk("Fit all", () => viewer.fitToScreen()); mk("Screenshot all", shootAll);
+  mk("Undo", undo); mk("Redo", redo);
+  { const bs = b.querySelectorAll("button"); const u = bs[bs.length - 2], r = bs[bs.length - 1];
+    u.id = "undoBtn"; r.id = "redoBtn"; u.title = "Undo the last move (Ctrl+Z)"; r.title = "Redo (Ctrl+Y)"; undoButtons(); }
+  mk("Show all lines", ev => { showAll = !showAll; ev.target.textContent = showAll ? "One line at a time" : "Show all lines"; only(current); });
+  if (live) { const sb = [...b.querySelectorAll("button")].find(x => x.textContent === "Screenshot all"); sb.disabled = true; sb.id = "shotbtn"; sb.title = "Available when the agent has finished"; }
+  mk("Colour: RGB/Height", () => { pc.material.activeAttributeName = pc.material.activeAttributeName === "rgba" ? "elevation" : "rgba"; });
+  mk("Colour: Class", () => { pc.material.activeAttributeName = "classification"; });
+  const w = document.createElement("div"); w.className = "opts";
+  w.innerHTML = `Point budget <select id="bud"><option value="5000000">5 M</option><option value="15000000">15 M</option><option value="25000000" selected>25 M</option><option value="50000000">50 M</option><option value="100000000">100 M (all)</option></select>
+    &nbsp; Size <input id="psz" type="range" min="0.3" max="4" step="0.1" value="1.2" style="width:70px"> <span id="shown"></span>`;
+  b.appendChild(w);
+  document.getElementById("bud").onchange = e => viewer.setPointBudget(+e.target.value);
+  document.getElementById("psz").oninput = e => { pc.material.size = +e.target.value; };
+  setInterval(() => { const n = viewer.scene.pointclouds.reduce((a, p) => a + (p.numVisiblePoints || 0), 0);
+    document.getElementById("shown").textContent = n ? "showing " + (n / 1e6).toFixed(1) + " M pts" : ""; }, 1000);
+}
+const COL = {L: 0x22d3ee, M: 0x84cc16, R: 0xfb923c, OPGW: 0xe879f9, OPGW_L: 0xe879f9, OPGW_R: 0xe879f9};
+async function handle(e) {                       // one live event from the agent
+  if (e.type === "stage") { ban(e.text); await sleep(e.ms || 500); }
+  else if (e.type === "tower") {
+    ban("Tower located (height " + e.height + " m)"); e.lines.forEach(l => addLine(l, 0xfacc15, 3));
+    const c = new THREE.Vector3(...e.center);
+    await fly(c.clone().add(new THREE.Vector3(70, -70, 25)), c, 1300);
+  }
+  else if (e.type === "towers") {
+    for (const t of e.towers) {
+      const r = 7, x = t.x, y = t.y, z0 = t.z0, z1 = t.z0 + t.h;
+      const sq = z => [[x - r, y - r, z], [x + r, y - r, z], [x + r, y + r, z], [x - r, y + r, z], [x - r, y - r, z]];
+      const box = [addLine(sq(z0), 0xfacc15, 3), addLine(sq(z1), 0xfacc15, 3)];
+      for (const [a, b] of [[-r, -r], [r, -r], [r, r], [-r, r]]) box.push(addLine([[x + a, y + b, z0], [x + a, y + b, z1]], 0xfacc15, 3));
+      const an = new Potree.Annotation({position: new THREE.Vector3(x, y, z1 + 4), title: t.title || t.name});
+      viewer.scene.annotations.add(an); ANN[t.key ?? t.name] = an; BOX[t.key] = box;
+      if (e.towers.length > 1 && t.key !== undefined) addRemoveButton(an, t.key);
+    }
+    const T = e.towers;
+    if (e.sideview && T.length > 1) {
+      // look at the whole line from the side so that Tower 1 is on the LEFT of the screen and Tower N on the RIGHT
+      const a = new THREE.Vector3(T[0].x, T[0].y, 0), b = new THREE.Vector3(T[T.length - 1].x, T[T.length - 1].y, 0);
+      const d = b.clone().sub(a), L = d.length(), mid = a.clone().add(b).multiplyScalar(0.5);
+      mid.z = T.reduce((s, t) => s + t.z0 + t.h / 2, 0) / T.length;
+      let side = new THREE.Vector3(-d.y, d.x, 0).normalize();
+      const look = side.clone().negate(), right = new THREE.Vector3(look.y, -look.x, 0);
+      if (d.dot(right) < 0) side.negate();
+      const dist = Math.max(L * 0.9, 150);
+      await fly(mid.clone().add(side.multiplyScalar(dist)).add(new THREE.Vector3(0, 0, dist * 0.25)), mid, 1500);
+    } else { viewer.fitToScreen(); }
+    await sleep(1500);
+  }
+  else if (e.type === "towers_removed") {
+    showRemoved(e.keys); Object.values(RBTN).forEach(b => b.remove());
+    for (const k of e.keys) delete ANN[k];
+    await sleep(300);
+  }
+  else if (e.type === "tower_names") {
+    for (const t of e.names) { const an = ANN[t.key]; if (an) { an.title = t.name; ANN[t.name] = an; } }
+    await sleep(800);
+  }
+  else if (e.type === "tower_type") { if (ANN[e.name]) ANN[e.name].title = `${e.name} (${e.ttype})`; await sleep(300); }
+  else if (e.type === "lines") { e.lines.forEach(l => addLine(l, +e.color || 0xfacc15, 3)); await sleep(400); }
+  else if (e.type === "wire") { ban("Wire found: " + e.name); addLine(e.points, COL[e.name] || 0xffffff, 3); await sleep(450); }
+  else if (e.type === "measure") {
+    ban("Measuring: " + e.m.label); const i = addMeasure(e.m); const [p, l] = camFor(e.m); await fly(p, l, 900); await sleep(900);
+  }
+  else if (e.type === "skip") {
+    spanHeader(e.spanlabel || e.folder);
+    const d = document.createElement("div"); d.className = "it sk"; d.innerHTML = `<span>${e.label}</span><span>measure by hand</span>`; document.getElementById("items").appendChild(d); await sleep(150);
+  }
+  else if (e.type === "done") {
+    editable = true;
+    ban("Every span is marked. Drag an end point to move a line (Ctrl+Z undoes), then press Export in the panel on the left.");
+    const sb = document.getElementById("shotbtn"); if (sb) sb.disabled = false;
+    viewer.fitToScreen(); await sleep(9000); ban("");
+  }
+}
+async function liveLoop() {
+  let since = 0; const queue = [];
+  (async function pump() { try { const r = await (await fetch("/api/events?since=" + since)).json(); since = r.next; queue.push(...r.events); } catch (e) {} setTimeout(pump, 350); })();
+  while (true) {
+    if (shooting) { await sleep(200); continue; }             // never move the camera while screenshots are being taken
+    const e = queue.shift(); if (!e) { await sleep(120); continue; } await handle(e);
+  }
+}
+
+Potree.loadPointCloud(cloud, "tower", e => {
+  const pc = e.pointcloud; viewer.scene.addPointCloud(pc);
+  pc.material.size = 1.2; pc.material.pointSizeType = Potree.PointSizeType.ADAPTIVE;
+  const attrs = pc.pcoGeometry.pointAttributes.attributes ? pc.pcoGeometry.pointAttributes.attributes.map(a => a.name) : [];
+  pc.material.activeAttributeName = "elevation";   // RGB is often all-zero in survey LAS files (black on black) - toggle with the button
+  viewer.fitToScreen(); buttons(pc);
+  if (live) {
+    ban("Point cloud loaded - agent starting ..."); fetch("/api/ready", {method: "POST"}); liveLoop();
+  } else {
+    fetch(markersUrl).then(r => r.json()).then(list => list.forEach(m => addMeasure(m))).catch(err => msg("Could not load markers: " + err));
+  }
+});
+</script></body></html>

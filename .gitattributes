@@ -1,0 +1,21 @@
+* text=auto
+*.py  text eol=lf
+*.js  text eol=lf
+*.mjs text eol=lf
+*.html text eol=lf
+*.md  text eol=lf
+*.json text eol=lf
+*.bat text eol=crlf
+*.png binary
+*.jpg binary
+*.laz binary
+*.las binary
+*.xlsx binary
+*.bin binary
+# vendored third-party code: keep it out of the language stats and diffs
+potree_viewer/build/** linguist-vendored
+potree_viewer/libs/** linguist-vendored
+lidar_agent/vendor/** linguist-vendored
+# leave vendored files byte-for-byte as shipped
+potree_viewer/build/** -text
+potree_viewer/libs/** -text
