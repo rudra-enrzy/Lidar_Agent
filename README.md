@@ -40,6 +40,18 @@ into `lidar_agent/vendor`; run `npm install` only to update it.
 
 ## Run
 
+**Desktop app (recommended):** double-click `run_desktop.bat` (or `python run_desktop.py`). It opens the app in its own
+window with no browser. Install the window component once: `pip install -r requirements-desktop.txt` (pywebview; it
+uses Edge WebView2, which is already part of Windows 10/11). Files dropped on the window are used where they are, with
+no copy. Without pywebview, `run_desktop.bat` falls back to your browser.
+
+**One .exe for other PCs:** run `build_exe.bat` on Windows. It writes `dist\LineClearanceAgent\LineClearanceAgent.exe`
+(a folder of about 250 MB; zip it and send it, no Python needed on the other PC). Put `PotreeConverter.exe` in
+`tools\PotreeConverter\` next to the exe, or set `potree_converter` in `config.local.json` there. Unzip it to a normal,
+writable folder (not *Program Files*): the app writes the converted point clouds beside itself.
+
+**Browser version:**
+
 Double-click `run_app.bat`, or:
 
 ```bat
@@ -98,17 +110,50 @@ to; `null` = not checked) and detection options. `config.local.json` (not commit
 
 ```
 lidar_agent/           Python package
-  __main__.py          command line + the run (open -> towers -> spans -> export)
-  app.py, app.html     browser app (local server, live events, review / export)
-  detect.py            ground, towers, line chaining, wires, tower type
+  desktop.py           native window (pywebview) around the same local server
+  __main__.py          command line + the run (open -> towers -> spans -> export); several input files are merged
+  app.py, app.html     browser app (local server, live events, drag and drop, review / export)
+  pointcloud.py        streams one or more LAS/LAZ files, thinning, colour
+  detect.py            ground, towers, line chaining, wires, tower type (jumper loop / through-conductor / line angle)
   measure.py           every Observation Type, crossings, arcing horns
+  validate.py          remarks and checks on the values
   report.py            Excel, markers, marked LAZ
+  pdf_report.py        PDF copy of each report, with the screenshots
+  latlon.py            tower lat/long from an Excel or CSV sheet
   templates.py         report rows (exact client wording)
+  config.py            config.json + config.local.json
+  potree_launch.py, rangeserver.py   PotreeConverter, viewer server with Range requests
+  assets/logo.png      logo (app header, tab icon, PDF)
   vendor/thinking-orbs loading indicator (copied from npm)
+run_desktop.py, run_desktop.bat, build_exe.bat   desktop app and its Windows build script
 potree_viewer/         Potree 1.8 build + tower_viewer.html (live marking, screenshots, line editing)
-tests/                 synthetic lines with known answers + pytest end-to-end test
+tests/                 synthetic lines with known answers + pytest end-to-end tests
 scripts/               npm postinstall helper
+graphify-out/          code map built with graphify (see below)
 ```
+
+## Code map (graphify)
+
+`graphify-out/` holds a map of this code made with [graphify](https://pypi.org/project/graphifyy/):
+
+| File | What it is |
+|---|---|
+| `graph.html` | interactive graph: search, click a node, filter by community (loads its viewer library from the internet) |
+| `GRAPH_REPORT.md` | the most connected functions, surprising links between files, communities |
+| `graph.json` | the graph itself, for tools and scripts |
+
+The most connected pieces are `_measure()` (every measurement row), `pipeline()` (the app's run) and the `Run` class
+(the main flow). There are no circular imports. The map covers this repository's own code, not the bundled Potree.
+
+Rebuild it after code changes (code is read directly, no API key or model needed):
+
+```bat
+pip install graphifyy
+graphify update .
+```
+
+The PyPI package is `graphifyy` (two y's); the unrelated `graphify` on npm is a different tool. Ask questions of the
+graph from the command line with `graphify explain "Run"` or `graphify path "pipeline" "_measure"`.
 
 ## Tests
 
@@ -118,7 +163,8 @@ python -m pytest -q
 ```
 
 `tests/test_synthetic.py` builds a 4-tower line (one tension tower, a road and a crossing line) with known
-clearances and checks the agent against them. No client data is used; please don't commit LAS/LAZ files or reports
+clearances and checks the agent against them, and also covers the lat/long sheet, the PDF report and a line split
+across two files. No client data is used; please don't commit LAS/LAZ files or reports
 (they are in `.gitignore`).
 
 ## Third-party software

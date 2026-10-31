@@ -189,7 +189,7 @@ details.log summary{cursor:pointer;color:var(--text-2);font:500 13px/1 var(--f-c
           <div class="file" style="margin-top:var(--s2)"><input id="laz" placeholder="or paste a full path and press Enter" autocomplete="off" aria-describedby="lazErr">
             <button type="button" class="btn" id="addPath">Add</button></div>
           <div class="hint" id="lazHint">Several files are merged into one cloud (for example the tiles of one line). The first file names the reports.
-            Browse and pasted paths are used where they are; dropped files are copied into this app's <code>data\uploads</code> folder first.</div>
+            Browse and pasted paths are used where they are. In the desktop app dropped files are used where they are too; in a browser they are copied into <code>data\uploads</code> first.</div>
           <div class="err" id="lazErr" role="alert"></div>
         </div>
         <label class="check"><input type="checkbox" id="full" checked><span>Use every point<small>Exact values. Slower on large files.</small></span></label>
@@ -448,6 +448,7 @@ function addPath(p){
   FILES.push({path: p, name: base(p), state: "ok"}); renderFiles();
 }
 function addDropped(file){
+  if (file.pywebviewFullPath && /\.la[sz]$/i.test(file.name)) { addPath(file.pywebviewFullPath); return; }   // desktop window: real path, no copy
   if (!/\.la[sz]$/i.test(file.name)) { $("lazErr").textContent = `${file.name}: only .las and .laz files.`; return; }
   const f = {path: "", name: file.name, size: file.size, state: "up", pct: 0}; FILES.push(f); renderFiles();
   const x = new XMLHttpRequest(); x.open("POST", "/api/upload?name=" + encodeURIComponent(file.name));

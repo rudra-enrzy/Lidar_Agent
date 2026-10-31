@@ -45,3 +45,8 @@ data/uploads/
 
 # Cesium bundle: not used by the app, and its demo Mapbox token trips GitHub push protection
 potree_viewer/libs/Cesium/
+
+# desktop build output
+build/
+dist/
+*.spec
